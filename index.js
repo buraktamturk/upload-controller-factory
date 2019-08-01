@@ -158,6 +158,11 @@
         this.$blob = null;
         this.$blob_url = null;
         this.$state = 1;
+
+        for(let key of fields) {
+          delete this[key];
+        }
+
         this.notify();
       }
 
@@ -180,17 +185,49 @@
 
       removeListener(listener) {
         var index = this.listeners.indexOf(listener);
-        if(index == -1) {
+        if(index != -1) {
           this.listeners.splice(index, 1);
         } else {
           throw new Error('Listener is not connected');
         }
       }
 
+      resolve() {
+        return this.$state === 1 ? Promise.resolve(null) :
+            this.$state === 3 ? Promise.resolve(this) : new Promise((resolve) => {
+              var fnc = () => {
+                if(this.$state == 2)
+                  return;
+
+                if(this.$state == 1) {
+                  resolve(null);
+                } else if(this.$state == 3) {
+                  resolve(this);
+                }
+
+                this.removeListener(fnc);
+              };
+
+              this.addListener(fnc);
+            });
+      }
+
+      static async resolve_all(array) {
+        return (await Promise.all(
+          array
+            .filter(a => a)
+            .map(a => a.resolve())))
+              .filter(a => a);
+      }
+
       toJSON() {
+        if(this.$state !== 3) {
+          return null;
+        }
+
         var data = {};
 
-        for(var key in fields) {
+        for(var key of fields) {
           data[key] = this[key];
         }
 
@@ -204,6 +241,7 @@
 
     fnc.valueKey = valueKey;
     fnc.srcKey = srcKey;
+    fnc.resolve_all = UploadController.resolve_all;
 
     return fnc;
   };
