@@ -9,13 +9,19 @@ JavaScript file uploading mechanism with default (optional) XHR backend. To be c
   var UploadControllerFactory = require('uploadcontroller');
 
   var UploadController = UploadControllerFactory({
-    xhrUrl: 'http://localhost/upload.php?filename=$file', // you can use $file to put file name to the URL
-    xhrAsFormData: true, // if true, it sends the file as multipart data. Otherwise the whole file is sent as a body with correct mime type
-    xhrFormDataFileKey: 'file', // if xhrAsFormData true, 
 
-    xhrMethod: 'POST', // default
-    xhrHeaders: {}, // extra headers to be sent
-    xhrCallback: function(xhr) { }, // XHR hook before sending data
+    // specify a built in upload method,
+    upload: UploadControllerFactory.XHR({
+      xhrUrl: 'http://localhost/upload.php?filename=$file', // you can use $file to put file name to the URL
+      xhrAsFormData: true, // if true, it sends the file as multipart data. Otherwise the whole file is sent as a body with correct mime type
+      xhrFormDataFileKey: 'file', // if xhrAsFormData true, 
+
+      xhrMethod: 'POST', // default
+      xhrHeaders: {}, // extra headers to be sent
+      xhrCallback: function(xhr) { }, // XHR hook before sending data
+    })
+
+    // or a customized one
     upload: function(name, blob, contentType, abort, progress) {
       // Disables XHR and enables custom uploading backend.
       // Function must return a promise that will resolve with a javascript object.

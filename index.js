@@ -7,75 +7,17 @@
     root.UploadControllerFactory = factory();
   }
 })(this, function() {
-  return function(config) {
+  var factory = function(config) {
     var valueKey = (config && config.valueKey) || 'id';
     var srcKey = (config && config.srcKey) || 'access_url';
+    var lengthKey = (config && config.lengthKey) || 'size';
+    var nameKey = (config && config.nameKey) || 'name';
 
     var fields = config.fields || ['id', 'access_url', 'name', 'size'];
 
     var uploadFnc = config.uploader;
     if(!uploadFnc) {
-      var xhrMethod = config.xhrMethod || 'POST';
-
-      if(!config.xhrUrl) {
-        throw new Error('Please provide URL.')
-      }
-
-      var xhrUrl = config.xhrUrl;
-      var xhrAsFormData = config.xhrAsFormData || false;
-      var xhrFormDataNameKey = config.xhrFormDataNameKey;
-      var xhrFormDataFileKey = config.xhrFormDataFileKey || 'file';
-      var xhrCallback = config.xhrCallback;
-    
-      uploadFnc = async function(name, blob, contentType, abort, progress) {
-        return await new Promise(function(resolve, reject) {
-          var xhr = new XMLHttpRequest();
-
-          abort.onabort = function() {
-            xhr.onreadystatechange = null;
-            xhr.abort();
-            reject(new Error('Aborted!'));
-          };
-    
-          xhr.upload.onprogress = xhr.upload.onloadstart = function(e) {
-            progress(e.loaded / e.total);
-          };
-    
-          xhr.onreadystatechange = function(e) {
-            if (this.readyState === XMLHttpRequest.DONE) {
-              if(this.status === 200) {
-                try {
-                  var data = JSON.parse(this.responseText);
-                  if(data == null)
-                    reject();
-                  else
-                    resolve(data);
-                } catch(e) {
-                  reject(e);
-                }
-              } else {
-                reject(this);
-              }
-            }
-          };
-
-          xhr.open(xhrMethod, xhrUrl.replace('$file', encodeURIComponent(name)), true);
-    
-          if(xhrCallback) {
-            xhrCallback(xhr);
-          }
-    
-          if(xhrAsFormData) {
-            var formData = new FormData();
-            xhrFormDataNameKey && formData.append(xhrFormDataNameKey, name);
-            formData.append(xhrFormDataFileKey, blob, name);
-            xhr.send(formData);
-          } else {
-            xhr.setRequestHeader("Content-Type", contentType);
-            xhr.send(blob);
-          }
-        });
-      };
+      throw new Error('Please specify an upload method.');
     }
 
     class UploadController {
@@ -89,6 +31,13 @@
         }
 
         this.$state = this[valueKey] ? 3 : 1;
+
+        if(this.$state === 3) {
+          this.$name = this[nameKey];
+          this.$size = this[lengthKey];
+          this.$src = this[srcKey];
+          this.$value = this[valueKey];
+        }
       }
 
       async upload(name, contentType, blob) {
@@ -102,6 +51,10 @@
           previous[key] = this[key];
         }
 
+        for(var key of ['$name', '$value', '$src', '$size']) {
+          previous[key] = this[key];
+        }
+
         previous.$state = this.$state;
         previous.$blob = this.$blob;
         previous.$blob_url = this.$blob_url;
@@ -112,6 +65,7 @@
             this.$blob = blob;
             this.$blob_url = URL.createObjectURL(blob);
             this.$state = 2;
+            this.$size = blob.size;
 
             this.$pr = 0;
 
@@ -126,19 +80,22 @@
 
             this.$state = 3;
 
-            this.notify();
-            
             for(var key of fields) {
               this[key] = data[key];
             }
+
+            if(this.$state === 3) {
+              nameKey && (this.$name = this[nameKey]);
+              lengthKey && (this.$size = this[lengthKey]);
+              this.$src = this[srcKey];
+              this.$value = this[valueKey];
+            }
+
+            this.notify();
         } catch (e) {
-          for(var key of fields) {
+          for(var key in previous) {
             this[key] = previous[key];
           }
-
-          this.$state = previous.$state;
-          this.$blob = previous.$blob;
-          this.$blob_url = previous.$blob_url;
 
           this.notify();
         } finally { 
@@ -239,10 +196,88 @@
       return data && (data instanceof UploadController) ? data : new UploadController(data);
     };
 
+    fnc.new = function(data) {
+      var obj = {};
+      obj[valueKey] = data.$value;
+      obj[srcKey] = data.$src;
+      nameKey && (obj[nameKey] = data.$name);
+      lengthKey && (obj[lengthKey] = data.$size);
+      return fnc(obj);
+    };
+
     fnc.valueKey = valueKey;
     fnc.srcKey = srcKey;
+    fnc.lengthKey = lengthKey;
+    fnc.nameKey = nameKey;
+
     fnc.resolve_all = UploadController.resolve_all;
 
     return fnc;
   };
+
+  factory.XHR = function(config) {
+    var xhrMethod = config.xhrMethod || 'POST';
+
+    if(!config.xhrUrl) {
+      throw new Error('Please provide URL.')
+    }
+
+    var xhrUrl = config.xhrUrl;
+    var xhrAsFormData = config.xhrAsFormData || false;
+    var xhrFormDataNameKey = config.xhrFormDataNameKey;
+    var xhrFormDataFileKey = config.xhrFormDataFileKey || 'file';
+    var xhrCallback = config.xhrCallback;
+  
+    return async function(name, blob, contentType, abort, progress) {
+      return await new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+
+        abort.onabort = function() {
+          xhr.onreadystatechange = null;
+          xhr.abort();
+          reject(new Error('Aborted!'));
+        };
+  
+        xhr.upload.onprogress = xhr.upload.onloadstart = function(e) {
+          progress(e.loaded / e.total);
+        };
+  
+        xhr.onreadystatechange = function(e) {
+          if (this.readyState === XMLHttpRequest.DONE) {
+            if(this.status === 200) {
+              try {
+                var data = JSON.parse(this.responseText);
+                if(data == null)
+                  reject();
+                else
+                  resolve(data);
+              } catch(e) {
+                reject(e);
+              }
+            } else {
+              reject(this);
+            }
+          }
+        };
+
+        xhr.open(xhrMethod, xhrUrl.replace('$file', encodeURIComponent(name)), true);
+  
+        if(xhrCallback) {
+          xhrCallback(xhr);
+        }
+  
+        if(xhrAsFormData) {
+          var formData = new FormData();
+          xhrFormDataNameKey && formData.append(xhrFormDataNameKey, name);
+          formData.append(xhrFormDataFileKey, blob, name);
+          xhr.send(formData);
+        } else {
+          xhr.setRequestHeader("Content-Type", contentType);
+          xhr.send(blob);
+        }
+      });
+    };
+  };
+
+  return factory;
 });
